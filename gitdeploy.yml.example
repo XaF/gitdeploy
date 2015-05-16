@@ -1,0 +1,21 @@
+# File configuration
+files:
+    # The pidfile to use for the gitdeploy daemon
+    pid: /var/run/gitdeploy.pid
+
+    # The logfile
+    log: /var/log/gitdeploy.log
+
+# Server configuration
+server:
+    # The port on which the gitdeploy webserver will listen
+    port: 7920
+
+# Deploy configuration:
+deploy:
+    # Commands to run before deployment
+    before:
+        - echo Starting deployment!
+    # Commands to run after deployment
+    after:
+        - echo Ending deployment!
