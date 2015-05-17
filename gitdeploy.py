@@ -418,10 +418,10 @@ class GitDeployHandler(BaseHTTPRequestHandler):
                                 continue
 
                             rtype, rname = repo['ref']
-                            if rtype in rule:
-                                if not self.__check_only_except(rname,
-                                                                rule[rtype]):
-                                    continue
+                            if (rtype in rule
+                                    and not self.__check_only_except(
+                                        rname, rule[rtype])):
+                                continue
 
                             if ((repo['key'] is None
                                  and 'key' in rule and rule['key'] is not None)
