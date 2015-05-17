@@ -263,7 +263,7 @@ class GitDeployHandler(BaseHTTPRequestHandler):
                     return
 
                 # Get the branch
-                ref = ()
+                ref = None
                 if 'ref' in entry:
                     if 'ref_type' in entry:
                         ref = (entry['ref_type'], entry['ref'])
@@ -279,7 +279,7 @@ class GitDeployHandler(BaseHTTPRequestHandler):
                             ref = (None, entry['ref'])
 
                 # Get the commit
-                commit = ''
+                commit = None
                 if 'after' in entry:
                     commit = entry['after']
 
@@ -297,13 +297,11 @@ class GitDeployHandler(BaseHTTPRequestHandler):
                         else:
                             ref = ('branch', c['branch'])
 
-                    if not commit and 'raw_node' in c:
+                    if commit is None and 'raw_node' in c:
                         commit = c['raw_node']
 
-                # Finally, add to the repos list, but only
-                # if we got all the information needed for
-                # the analysis phase
-                if ulist and ref and commit:
+                # Finally, add to the repos list
+                if ulist:
                     data = {
                         'urls': ulist,
                         'ref': ref,
