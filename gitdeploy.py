@@ -28,11 +28,11 @@ import os
 import os.path
 import pwd
 import re
-import urlparse
-import yaml
 import shlex
 import subprocess
 import sys
+import urlparse
+import yaml
 
 CURRENT_DIR = os.path.realpath('.')
 GNRL_LOG_FORMAT = ("%(asctime)s::%(name)s::"
