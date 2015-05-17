@@ -330,6 +330,13 @@ class GitDeployHandler(BaseHTTPRequestHandler):
         return hooks
 
     def __callstack(self, user, commands, returns=False):
+        if isinstance(commands, str):
+            result = self.__callstack(user, [commands, ], returns)
+            if returns and not isinstance(result, tuple):
+                return result[0]
+            else:
+                return result
+
         if returns:
             results = []
 
@@ -370,18 +377,103 @@ class GitDeployHandler(BaseHTTPRequestHandler):
         else:
             return True
 
+    def __sort_branches(self, bname):
+        """
+        Allow to return a function to sort two
+        branches following this order:
+        - a branch with the same name as the given branch name
+          will be before another
+        - a branch which is not behind nor ahead will be before
+          one which is
+        - a branch which is behind will be before one which is
+          ahead
+        - a branch which has less distance from the remote will
+          be before one that has more distance from it
+        """
+        def f(x, y):
+            x = x.groupdict()
+            y = y.groupdict()
+
+            ret = 0
+            if x['branch'] == bname and y['branch'] != bname:
+                ret = -1
+            elif y['branch'] == bname and x['branch'] != bname:
+                ret = 1
+            elif (x['ahead'] and y['ahead']
+                  and x['behind'] and y['behind']):
+                ret = cmp(int(x['dista']) + int(x['distb']),
+                          int(y['dista']) + int(y['distb']))
+            elif (x['ahead'] and y['ahead']
+                  and not (x['behind'] or y['behind'])):
+                ret = cmp(int(x['dista']), int(y['dista']))
+            elif (x['behind'] and y['behind']
+                  and not (x['ahead'] or y['ahead'])):
+                ret = cmp(int(x['distb']), int(y['distb']))
+            elif (x['ahead'] is None
+                  and x['behind'] is None):
+                ret = -1
+            elif (y['ahead'] is None
+                  and y['behind'] is None):
+                ret = 1
+            elif x['ahead'] and not y['ahead']:
+                ret = 1
+            elif y['ahead'] and not x['ahead']:
+                ret = -1
+            elif x['behind'] and not y['behind']:
+                ret = 1
+            else:
+                ret = -1
+
+            return ret
+
+        return f
+
     def __pull_git(self, user, repo, rule):
+        # Move to path given in the rule
         os.chdir(rule['path'])
 
+        # Get repo information
+        urls = repo[0]
         rtype, rname = repo[1]
         commit = repo[2]
 
+        # Get remote repository name
+        run = self.__callstack(user, "git remote -v", True)
+        if isinstance(run, tuple):
+            return False
+
+        p = re.compile(ur'^(?P<remote>[^\s]+)\s+(?P<url>' +
+                       '|'.join([re.escape(url) for url in urls]) +
+                       ur')\s+\(fetch\)$',
+                       re.IGNORECASE | re.MULTILINE)
+        m = p.search(run)
+        if not m:
+            # No remote is linked to the repo we are at: error!
+            self.__user_log(
+                user,
+                logging.ERROR,
+                "Repository '%s' not found at '%s'",
+                rule['url'],
+                rule['path'])
+
+            return False
+
+        # We got the remote name, we can thus use it to fetch
+        # the last commits and tags from it
+        remote = m.group('remote')
+        self.server.log.debug(
+            "Remote found: %s",
+            remote)
+
         commands = [
-            "git fetch --all",
+            ("git fetch -fp %(r)s refs/heads/*:refs/remotes/%(r)s/*"
+             % {'r': remote} + " +refs/tags/*:refs/tags/*"),
             "git update-index --refresh"
         ]
 
         if rtype == 'branch':
+            # In case we're working on a branch, we also want to
+            # be sure of the branch we have to update
             commands += [
                 "git branch -r --contains %s" % commit,
                 "git branch -lvv",
@@ -390,33 +482,86 @@ class GitDeployHandler(BaseHTTPRequestHandler):
             if isinstance(run, tuple):
                 return False
 
-            rbranch = run[-2].split('\n', 2)[0].strip()
-
-            m = re.search(
-                "(?P<selected>\*)?\s+(?P<branch>[^ ]+)\s+"
-                "(?P<commit>[a-z0-9]*)\s+\[(?P<remote>" +
-                re.escape(rbranch) +
-                ")(?:\: behind (?P<behind>[0-9]+))?\]",
-                run[-1]
-            )
-            commands = []
+            # We thus search for the remote branch that contains
+            # our given commit, and that should have the name we
+            # received in the request
+            p = re.compile(
+                ur'^\s+(?P<rbranch>(?P<remote>' +
+                re.escape(remote) +
+                ')/(?P<branch>' +
+                re.escape(rname) +
+                '))$',
+                re.IGNORECASE | re.MULTILINE)
+            m = p.search(run[-2])
             if not m:
-                commands.append("git checkout -b %s %s" % (rname, rbranch))
-            elif m.group('selected') == '':
-                commands.append("git checkout %s" % m.group('branch'))
+                # No remote is linked to the repo we are at: error!
+                self.__user_log(
+                    user,
+                    logging.ERROR,
+                    "The remote branch '%s' with commit '%s' was not found",
+                    '%s/%s' % (remote, rname),
+                    commit)
 
+                return False
+
+            rbranch = m.group('rbranch')
+            self.server.log.debug(
+                "Remote branch found: %s",
+                rbranch)
+
+            # We then search for a local branch pointing towards that
+            # remote branch. If we find more than one, we'll sort them
+            # using the __sort_branches function. We also don't need
+            # to checkout the branch if we're already on it.
+            p = re.compile(
+                '^(?P<selected>\*)?\s+(?P<branch>[^ ]+)\s+'
+                '(?P<commit>[a-z0-9]*)\s+\[(?P<remote>' +
+                re.escape(rbranch) +
+                ')(?:\: (?P<ahead>ahead) (?P<dista>[0-9]+))?'
+                '(?:(?:\:|,) (?P<behind>behind) (?P<distb>[0-9]+))?\]',
+                re.IGNORECASE | re.MULTILINE)
+
+            matches = [m for m in p.finditer(run[-1])]
+            self.server.log.debug(
+                "Matching local branches: %s",
+                [m.groupdict() for m in matches])
+
+            commands = []
+            if not matches:
+                commands.append("git checkout -b %s %s" % (rname, rbranch))
+            else:
+                matches.sort(self.__sort_branches(rname))
+                m = matches[0]
+                self.server.log.debug(
+                    "Best matching local branch: %s",
+                    m.groupdict())
+
+                if m.group('selected') != '*':
+                    commands.append("git checkout %s" % m.group('branch'))
+
+            # We finally reset everything in the directory to be sure
+            # We're at the same level as the git repository
             commands.append("git reset --hard %s" % rbranch)
             run = self.__callstack(user, commands, True)
             if isinstance(run, tuple):
                 return False
 
+            # We verify that the commit we're at is the one we received as
+            # parameter, or we'll need to checkout again
             m = re.search("HEAD is now at (?P<commit>[a-z0-9]+) ", run[-1])
             if not m:
+                self.server.log.error(
+                    "Unexpected error when verifying the commit after reset."
+                    "Command was '%s'. The string we got is: %s",
+                    commands[-1],
+                    run[-1])
                 return False
 
             if commit.startswith(m.group('commit')):
                 return True
 
+            # We only arrive here if the commit was different: we thus
+            # need to checkout it using the commit ID.
             commands = [
                 "git checkout %s" % commit,
             ]
