@@ -191,6 +191,10 @@ class GitDeployHandler(BaseHTTPRequestHandler):
                 'Request \'Content-Type\' is invalid: %s' % ctype)
             return False
 
+        self.server.log.debug(
+            "Received request headers: %s",
+            self.headers.items())
+
         # Search for a key in the query string
         key = urlparse.parse_qs(
             urlparse.urlparse(self.path).query).get('key', None)
