@@ -136,11 +136,7 @@ class GitDeployHandler(BaseHTTPRequestHandler):
                 self.server.log.debug("Rules found: %s", work)
 
                 for repo, users in work.items():
-
-                    for repos in repositories:
-                        if repo in repos['urls']:
-                            repo = repos
-                            break
+                    repo = repositories[repo]
 
                     for user, rules in users.items():
                         u = pwd.getpwnam(user)
@@ -366,10 +362,11 @@ class GitDeployHandler(BaseHTTPRequestHandler):
                                     if rname in rule[rtype]['except']:
                                         continue
 
-                            if repo['urls'][0] not in hooks:
-                                hooks[repo['urls'][0]] = {u.pw_name: [rule, ]}
+                            i = repositories.index(repo)
+                            if i not in hooks:
+                                hooks[i] = {u.pw_name: [rule, ]}
                             else:
-                                hooks[repo['urls'][0]][u.pw_name].append(rule)
+                                hooks[i][u.pw_name].append(rule)
 
             # Get back as us
             setenv()
