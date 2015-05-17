@@ -191,6 +191,14 @@ class GitDeployHandler(BaseHTTPRequestHandler):
                 'Request \'Content-Type\' is invalid: %s' % ctype)
             return False
 
+        # Search for a key in the query string
+        key = urlparse.parse_qs(
+            urlparse.urlparse(self.path).query).get('key', None)
+
+        if key is not None:
+            key = key[-1]
+            self.server.log.debug("Found key: %s", key)
+
         # Get the content
         try:
             rq_length = int(self.headers.getheader('content-length'))
@@ -307,6 +315,7 @@ class GitDeployHandler(BaseHTTPRequestHandler):
                         'ref': ref,
                         'commit': commit,
                         'event': l_event_type,
+                        'key': key,
                         'request': entry,
                     }
                     repos.append(data)
@@ -413,6 +422,13 @@ class GitDeployHandler(BaseHTTPRequestHandler):
                                 if not self.__check_only_except(rname,
                                                                 rule[rtype]):
                                     continue
+
+                            if ((repo['key'] is None
+                                 and 'key' in rule and rule['key'] is not None)
+                                or (repo['key'] is not None and (
+                                    'key' not in rule
+                                    or str(rule['key']) != repo['key']))):
+                                continue
 
                             i = repositories.index(repo)
                             if i not in hooks:
