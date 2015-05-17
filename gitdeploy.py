@@ -166,6 +166,21 @@ class GitDeployHandler(BaseHTTPRequestHandler):
 
                 os.environ['HOME'] = pwd.getpwuid(os.getuid()).pw_dir
 
+    def __filter_event_type(self, event_type):
+        replace = {
+            # Convert GitLab header event to a more
+            # straightforward event slug
+            'Push Hook':            'push',
+            'Tag Push Hook':        'tag_push',
+            'Issue Hook':           'issue',
+            'Merge Request Hook':   'merge_request',
+        }
+
+        if event_type in replace:
+            event_type = replace[event_type]
+
+        return event_type
+
     def __parse_request(self):
         # Verify that the request was of the right type
         ctype = self.headers.gettype()
@@ -196,6 +211,13 @@ class GitDeployHandler(BaseHTTPRequestHandler):
         repos = []
 
         def get_repos(entry):
+            if event_type is None and 'object_kind' in entry:
+                l_event_type = self.__filter_event_type(entry['object_kind'])
+            else:
+                l_event_type = event_type
+
+            self.server.log.debug("Event type: %s", l_event_type)
+
             if 'repository' in entry:
                 # Get the URL list
                 ulist = []
@@ -286,8 +308,18 @@ class GitDeployHandler(BaseHTTPRequestHandler):
                         'urls': ulist,
                         'ref': ref,
                         'commit': commit,
+                        'event': l_event_type,
                     }
                     repos.append(data)
+
+        # Search for the type of event we received, first in the
+        # header, then in the body if we didn't find it (will be
+        # done in get_repos())
+        event_type = None
+        for header, value in self.headers.items():
+            if re.search('^X-([^ ]+)-Event$', header, re.IGNORECASE):
+                event_type = self.__filter_event_type(value)
+                break
 
         if 'payload' in content:
             for item in content['payload']:
@@ -363,6 +395,11 @@ class GitDeployHandler(BaseHTTPRequestHandler):
 
                         for repo in repositories:
                             if rule['url'] not in repo['urls']:
+                                continue
+
+                            if ('event' in rule
+                                    and not self.__check_only_except(
+                                        'event', rule['event'])):
                                 continue
 
                             rtype, rname = repo['ref']
@@ -636,9 +673,11 @@ class GitDeployHandler(BaseHTTPRequestHandler):
                 if not run:
                     return False
 
-        run = self.__pull_git(user, repo, rule)
-        if not run:
-            return False
+        pull = (repo['event'] in ['push', 'create'])
+        if pull:
+            run = self.__pull_git(user, repo, rule)
+            if not run:
+                return False
 
         if 'deploy' in rule:
             if 'after' in rule['deploy']:
