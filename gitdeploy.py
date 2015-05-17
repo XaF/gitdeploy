@@ -307,6 +307,7 @@ class GitDeployHandler(BaseHTTPRequestHandler):
                         'ref': ref,
                         'commit': commit,
                         'event': l_event_type,
+                        'request': entry,
                     }
                     repos.append(data)
 
@@ -424,9 +425,9 @@ class GitDeployHandler(BaseHTTPRequestHandler):
 
         return hooks
 
-    def __callstack(self, user, commands, returns=False):
+    def __callstack(self, user, commands, env=None, returns=False):
         if isinstance(commands, str):
-            result = self.__callstack(user, [commands, ], returns)
+            result = self.__callstack(user, [commands, ], env, returns)
             if returns and not isinstance(result, tuple):
                 return result[0]
             else:
@@ -435,11 +436,24 @@ class GitDeployHandler(BaseHTTPRequestHandler):
         if returns:
             results = []
 
+        call_env = {
+            'HOME': user.pw_dir,
+            'UID': str(user.pw_uid),
+            'GID': str(user.pw_gid),
+            'USER': user.pw_name,
+            'PWD': os.getcwd(),
+        }
+        if isinstance(env, dict):
+            call_env.update(env)
+
+        self.server.log.debug("Environment: %s", call_env)
+
         for command in commands:
             args = shlex.split(command)
 
             run = subprocess.Popen(
                 args,
+                env=call_env,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT)
             out = run.communicate()[0].rstrip()
@@ -533,7 +547,7 @@ class GitDeployHandler(BaseHTTPRequestHandler):
         commit = repo['commit']
 
         # Get remote repository name
-        run = self.__callstack(user, "git remote -v", True)
+        run = self.__callstack(user, "git remote -v", returns=True)
         if isinstance(run, tuple):
             return False
 
@@ -573,7 +587,7 @@ class GitDeployHandler(BaseHTTPRequestHandler):
                 "git branch -r --contains %s" % commit,
                 "git branch -lvv",
             ]
-            run = self.__callstack(user, commands, True)
+            run = self.__callstack(user, commands, returns=True)
             if isinstance(run, tuple):
                 return False
 
@@ -637,7 +651,7 @@ class GitDeployHandler(BaseHTTPRequestHandler):
             # We finally reset everything in the directory to be sure
             # We're at the same level as the git repository
             commands.append("git reset --hard %s" % rbranch)
-            run = self.__callstack(user, commands, True)
+            run = self.__callstack(user, commands, returns=True)
             if isinstance(run, tuple):
                 return False
 
@@ -672,9 +686,17 @@ class GitDeployHandler(BaseHTTPRequestHandler):
             return True
 
     def __deploy_worker(self, user, repo, rule):
+        # Create a new environment variable to pass
+        # the request to the commands as an environment
+        # variable
+        env = {'DEPLOY_REQUEST': json.dumps(repo['request'])}
+
         if 'deploy' in rule:
             if 'before' in rule['deploy']:
-                run = self.__callstack(user, rule['deploy']['before'])
+                run = self.__callstack(
+                    user,
+                    rule['deploy']['before'],
+                    env=env)
                 if not run:
                     return False
 
@@ -694,7 +716,10 @@ class GitDeployHandler(BaseHTTPRequestHandler):
 
         if 'deploy' in rule:
             if 'after' in rule['deploy']:
-                run = self.__callstack(user, rule['deploy']['after'])
+                run = self.__callstack(
+                    user,
+                    rule['deploy']['after'],
+                    env=env)
                 if not run:
                     return False
 
