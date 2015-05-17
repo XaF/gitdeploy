@@ -203,12 +203,35 @@ class GitDeployHandler(BaseHTTPRequestHandler):
             if 'repository' in entry:
                 # Get the URL list
                 ulist = []
-                if ('absolute_url' in entry['repository']
+                # This part is kind of only for bitbucket.org...
+                if ('canon_url' in entry
+                        and 'absolute_url' in entry['repository']
                         and 'scm' in entry['repository']
                         and entry['repository']['scm'] == 'git'):
-                    ulist.append('git@bitbucket.org' +
-                                 entry['repository']['absolute_url'][0:-1])
-                else:
+                    p = re.compile(ur'^[^:]+://(?P<host>[^ ]+)$')
+                    m = p.search(entry['canon_url'])
+
+                    if m:
+                        hosturl = m.group('host')
+                        relurl = entry['repository']['absolute_url'][0:-1]
+
+                        ulist.append('git@' +
+                                     hosturl +
+                                     relurl +
+                                     '.git')
+
+                        if 'owner' in entry['repository']:
+                            ulist.append("https://" +
+                                         entry['repository']['owner'] +
+                                         "@" +
+                                         hosturl +
+                                         relurl +
+                                         ".git")
+
+                # Works for both github and gitlab using their
+                # different key names for the different cloning
+                # urls
+                if not ulist:
                     for u in ['clone_url',
                               'git_http_url',
                               'ssh_url',
@@ -235,15 +258,34 @@ class GitDeployHandler(BaseHTTPRequestHandler):
                                 rtype = 'branch'
                             ref = (rtype, rname)
                         else:
-                            ref = ('', entry['ref'])
+                            ref = (None, entry['ref'])
 
                 # Get the commit
                 commit = ''
                 if 'after' in entry:
                     commit = entry['after']
 
-                # Finally, add to the repos list
-                if ulist:
+                # Almost only for bitbucket again, as refs and
+                # last commit are not clear at all for it!
+                if (not ref or not commit) and 'commits' in entry:
+                    if isinstance(entry['commits'], list):
+                        c = entry['commits'][-1]
+                    else:
+                        c = entry['commits']
+
+                    if not ref and 'branch' in c:
+                        if c['branch'] is None:
+                            ref = ('tag', None)
+                        else:
+                            ref = ('branch', c['branch'])
+
+                    if not commit and 'raw_node' in c:
+                        commit = c['raw_node']
+
+                # Finally, add to the repos list, but only
+                # if we got all the information needed for
+                # the analysis phase
+                if ulist and ref and commit:
                     repos.append((ulist, ref, commit))
 
         if 'payload' in content:
