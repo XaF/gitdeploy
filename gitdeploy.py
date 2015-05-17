@@ -138,7 +138,7 @@ class GitDeployHandler(BaseHTTPRequestHandler):
                 for repo, users in work.items():
 
                     for repos in repositories:
-                        if repo in repos[0]:
+                        if repo in repos['urls']:
                             repo = repos
                             break
 
@@ -286,7 +286,12 @@ class GitDeployHandler(BaseHTTPRequestHandler):
                 # if we got all the information needed for
                 # the analysis phase
                 if ulist and ref and commit:
-                    repos.append((ulist, ref, commit))
+                    data = {
+                        'urls': ulist,
+                        'ref': ref,
+                        'commit': commit,
+                    }
+                    repos.append(data)
 
         if 'payload' in content:
             for item in content['payload']:
@@ -349,10 +354,10 @@ class GitDeployHandler(BaseHTTPRequestHandler):
                                 continue
 
                         for repo in repositories:
-                            if rule['url'] not in repo[0]:
+                            if rule['url'] not in repo['urls']:
                                 continue
 
-                            rtype, rname = repo[1]
+                            rtype, rname = repo['ref']
                             if rtype in rule:
                                 if 'only' in rule[rtype]:
                                     if rname not in rule[rtype]['only']:
@@ -361,10 +366,10 @@ class GitDeployHandler(BaseHTTPRequestHandler):
                                     if rname in rule[rtype]['except']:
                                         continue
 
-                            if repo[0][0] not in hooks:
-                                hooks[repo[0][0]] = {u.pw_name: [rule, ]}
+                            if repo['urls'][0] not in hooks:
+                                hooks[repo['urls'][0]] = {u.pw_name: [rule, ]}
                             else:
-                                hooks[repo[0][0]][u.pw_name].append(rule)
+                                hooks[repo['urls'][0]][u.pw_name].append(rule)
 
             # Get back as us
             setenv()
@@ -475,9 +480,9 @@ class GitDeployHandler(BaseHTTPRequestHandler):
         os.chdir(rule['path'])
 
         # Get repo information
-        urls = repo[0]
-        rtype, rname = repo[1]
-        commit = repo[2]
+        urls = repo['urls']
+        rtype, rname = repo['ref']
+        commit = repo['commit']
 
         # Get remote repository name
         run = self.__callstack(user, "git remote -v", True)
