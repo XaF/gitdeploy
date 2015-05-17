@@ -21,6 +21,7 @@
 
 # Python lib
 from BaseHTTPServer import BaseHTTPRequestHandler, HTTPServer
+import inspect
 import json
 import logging
 import os
@@ -34,7 +35,9 @@ import subprocess
 import sys
 
 CURRENT_DIR = os.path.realpath('.')
-LOG_FORMAT = "%(asctime)s::%(name)s::%(levelname)s::%(message)s"
+GNRL_LOG_FORMAT = ("%(asctime)s::%(name)s::"
+                   "%(function)s::%(levelname)s::%(message)s")
+USER_LOG_FORMAT = "%(asctime)s::%(name)s::%(levelname)s::%(message)s"
 LOG_LEVEL = logging.DEBUG
 MANDATORY_RULE_ARG = ['url', 'path']
 
@@ -51,6 +54,43 @@ def setenv(uid=None, gid=None):
         os.seteuid(uid)
 
 
+class ContextFilter(logging.Filter):
+    """
+    This is a filter which injects contextual information into the log.
+    """
+    def filter(self, record):
+        callingfunction = []
+
+        # Get the frame of the calling function
+        callerframe = inspect.currentframe().f_back
+        while callerframe.f_code.co_name != '_log':
+            callerframe = callerframe.f_back
+        callerframe = callerframe.f_back.f_back
+
+        # If the calling function is __user_log, we need
+        # to go one step further!
+        if callerframe.f_code.co_name == '__user_log':
+            callerframe = callerframe.f_back
+
+        # Get the module name if any
+        module = inspect.getmodule(callerframe)
+        if module:
+            callingfunction.append(module.__name__)
+
+        # Get the class name if any
+        if 'self' in callerframe.f_locals:
+            callingfunction.append(
+                callerframe.f_locals['self'].__class__.__name__)
+
+        # Finally get the function name
+        codename = callerframe.f_code.co_name
+        if codename != '<module>':
+            callingfunction.append(codename)
+
+        record.function = '.'.join(callingfunction)
+        return True
+
+
 class GitDeployHandler(BaseHTTPRequestHandler):
     def __init__(self, request, client_address, server):
         BaseHTTPRequestHandler.__init__(self, request, client_address, server)
@@ -64,8 +104,11 @@ class GitDeployHandler(BaseHTTPRequestHandler):
 
         # Prepare log handler
         handler = logging.FileHandler(logfile, mode='a+')
-        handler.setFormatter(logging.Formatter(LOG_FORMAT))
+        handler.setFormatter(logging.Formatter(USER_LOG_FORMAT))
         log.addHandler(handler)
+
+        # Prepare the server log handler
+        log.addHandler(self.server.handler)
 
         # Write log
         log.log(lvl, msg, *args, **kwargs)
@@ -299,13 +342,18 @@ class GitDeployHandler(BaseHTTPRequestHandler):
                 stderr=subprocess.STDOUT)
             out = run.communicate()[0].rstrip()
 
+            self.server.log.debug("Command: %s; Output:\n%s",
+                                  command,
+                                  out)
+
             if run.returncode != 0:
                 self.__user_log(
                     user,
                     logging.ERROR,
-                    "Error (%d) while running command: %s",
+                    "Error (%d) while running command: %s\n%s",
                     run.returncode,
-                    command)
+                    command,
+                    out)
                 return (run.returncode, command)
 
             if returns:
@@ -411,7 +459,7 @@ class GitDeployServer(HTTPServer):
         self.config = config
 
         # Get local logger
-        self.log = logging.getLogger(__name__)
+        self.log = logging.getLogger("HTTPServer")
 
         # Set the log in the right place
         if 'files' in self.config and 'log' in self.config['files']:
@@ -419,9 +467,10 @@ class GitDeployServer(HTTPServer):
         else:
             logfile = os.path.join(CURRENT_DIR, 'gitdeploy.log')
 
-        handler = logging.FileHandler(logfile, mode='a+')
-        handler.setFormatter(logging.Formatter(LOG_FORMAT))
-        self.log.addHandler(handler)
+        self.handler = logging.FileHandler(logfile, mode='a+')
+        self.handler.setFormatter(logging.Formatter(GNRL_LOG_FORMAT))
+        self.handler.addFilter(ContextFilter())
+        self.log.addHandler(self.handler)
 
         self.log.info('GitDeployServer started on port %d' % server_address[1])
 
@@ -433,7 +482,7 @@ def run(config):
 
 if __name__ == "__main__":
     logging.basicConfig(
-        format=LOG_FORMAT,
+        format=GNRL_LOG_FORMAT,
         level=LOG_LEVEL)
     log = logging.getLogger(__name__)
 
@@ -450,14 +499,14 @@ if __name__ == "__main__":
                 CONF = yaml.load(f)
                 if CONF:
                     CONFFILE = fname
-                    log.info("Using %s as configuration file" % fname)
+                    print("Using %s as configuration file" % fname)
                     break
 
     if not CONF:
         if CONF is None:
-            log.error("Configuration file empty.")
+            print("Configuration file empty.")
         else:
-            log.error("No configuration file found.")
+            print("No configuration file found.")
         sys.exit(1)
 
     run(CONF)
