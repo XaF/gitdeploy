@@ -207,7 +207,7 @@ class GitDeployHandler(BaseHTTPRequestHandler):
                         and 'scm' in entry['repository']
                         and entry['repository']['scm'] == 'git'):
                     ulist.append('git@bitbucket.org' +
-                                 item['repository']['absolute_url'][0:-1])
+                                 entry['repository']['absolute_url'][0:-1])
                 else:
                     for u in ['clone_url',
                               'git_http_url',
