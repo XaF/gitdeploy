@@ -673,7 +673,15 @@ class GitDeployHandler(BaseHTTPRequestHandler):
                 if not run:
                     return False
 
-        pull = (repo['event'] in ['push', 'create'])
+        if 'pull' in rule:
+            if isinstance(bool, rule['pull']):
+                pull = rule['pull']
+            else:
+                pull = self.__check_only_except(repo['event'],
+                                                rule['pull'])
+        else:
+            pull = (repo['event'] in ['push', 'create'])
+
         if pull:
             run = self.__pull_git(user, repo, rule)
             if not run:
