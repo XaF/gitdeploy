@@ -172,7 +172,7 @@ class GitDeployHandler(BaseHTTPRequestHandler):
 
     def __parse_request(self):
         # Verify that the request was of the right type
-        ctype = self.headers.getheader('content-type')
+        ctype = self.headers.gettype()
         if ctype not in [
                 'application/json',
                 'application/x-www-form-urlencoded']:
