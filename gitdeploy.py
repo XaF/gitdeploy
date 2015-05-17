@@ -304,6 +304,18 @@ class GitDeployHandler(BaseHTTPRequestHandler):
         self.end_headers()
 
     # DEPLOY handling
+    def __check_only_except(self, search, hierarchy):
+        ret = True
+
+        if 'only' in hierarchy:
+            if search not in hierarchy['only']:
+                ret = False
+        elif 'except' in hierarchy:
+            if search in hierarchy['except']:
+                ret = False
+
+        return ret
+
     def __search_hooks(self, repositories):
         hooks = {}
 
@@ -355,12 +367,9 @@ class GitDeployHandler(BaseHTTPRequestHandler):
 
                             rtype, rname = repo['ref']
                             if rtype in rule:
-                                if 'only' in rule[rtype]:
-                                    if rname not in rule[rtype]['only']:
-                                        continue
-                                elif 'except' in rule[rtype]:
-                                    if rname in rule[rtype]['except']:
-                                        continue
+                                if not self.__check_only_except(rname,
+                                                                rule[rtype]):
+                                    continue
 
                             i = repositories.index(repo)
                             if i not in hooks:
