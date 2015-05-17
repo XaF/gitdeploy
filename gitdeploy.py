@@ -339,12 +339,19 @@ class GitDeployHandler(BaseHTTPRequestHandler):
     def __check_only_except(self, search, hierarchy):
         ret = True
 
-        if 'only' in hierarchy:
-            if search not in hierarchy['only']:
-                ret = False
-        elif 'except' in hierarchy:
-            if search in hierarchy['except']:
-                ret = False
+        if (isinstance(list, hierarchy)
+                or isinstance(tuple, hierarchy)):
+            hierarchy = {'only': list(hierarchy)}
+
+        if isinstance(dict, hierarchy):
+            if 'only' in hierarchy:
+                if search not in hierarchy['only']:
+                    ret = False
+            elif 'except' in hierarchy:
+                if search in hierarchy['except']:
+                    ret = False
+        elif search == str(hierarchy):
+            ret = True
 
         return ret
 
