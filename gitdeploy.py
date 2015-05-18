@@ -494,17 +494,34 @@ class GitDeployHandler(BaseHTTPRequestHandler):
 
                         for repo in repositories:
                             if rule['url'] not in repo['urls']:
+                                self.server.log.debug(
+                                    "Rule out because url "
+                                    "is not matching (%s not in %s)" % (
+                                        rule['url'],
+                                        repo['urls'],
+                                    ))
                                 continue
 
                             if ('event' in rule
                                     and not self.__check_only_except(
                                         'event', rule['event'])):
+                                self.server.log.debug(
+                                    "Rule out because event "
+                                    "is not aimed (%s)" % (
+                                        rule['event'],
+                                    ))
                                 continue
 
                             rtype, rname = repo['ref']
                             if (rtype in rule
                                     and not self.__check_only_except(
                                         rname, rule[rtype])):
+                                self.server.log.debug(
+                                    "Rule out because %s "
+                                    "is not aimed (%s)" % (
+                                        rtype,
+                                        rname,
+                                    ))
                                 continue
 
                             if ((repo['key'] is None
@@ -512,6 +529,12 @@ class GitDeployHandler(BaseHTTPRequestHandler):
                                 or (repo['key'] is not None and (
                                     'key' not in rule
                                     or str(rule['key']) != repo['key']))):
+                                self.server.log.debug(
+                                    "Rule out because key "
+                                    "is not matching (%s != %s)" % (
+                                        rule['key'],
+                                        repo['key'],
+                                    ))
                                 continue
 
                             if ((repo['secret'] is None
@@ -521,6 +544,11 @@ class GitDeployHandler(BaseHTTPRequestHandler):
                                     'secret' not in rule
                                     or not repo['secret'].trykey(
                                         rule['secret'])))):
+                                self.server.log.debug(
+                                    "Rule out because secret key "
+                                    "is not matching (%s)" % (
+                                        rule['secret'],
+                                    ))
                                 continue
 
                             i = repositories.index(repo)
