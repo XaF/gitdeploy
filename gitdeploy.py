@@ -839,6 +839,8 @@ class GitDeployHandler(BaseHTTPRequestHandler):
         # variable
         env = {'DEPLOY_REQUEST': json.dumps(repo['request'])}
 
+        # Run deploy commands that the rule asks to run
+        # 'before' pulling
         run = self.__deploy_commands(
             'before',
             rule,
@@ -848,6 +850,7 @@ class GitDeployHandler(BaseHTTPRequestHandler):
         if not run:
             return False
 
+        # Check if we need to run the pull workflow
         if 'pull' in rule:
             if isinstance(bool, rule['pull']):
                 pull = rule['pull']
@@ -857,11 +860,14 @@ class GitDeployHandler(BaseHTTPRequestHandler):
         else:
             pull = (repo['event'] in ['push', 'create'])
 
+        # Run pull workflow if needed
         if pull:
             run = self.__pull_git(user, repo, rule)
             if not run:
                 return False
 
+        # Run deploy commands that the rule asks to run
+        # 'after' pulling
         run = self.__deploy_commands(
             'after',
             rule,
