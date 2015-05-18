@@ -822,20 +822,31 @@ class GitDeployHandler(BaseHTTPRequestHandler):
         else:
             return True
 
+    def __deploy_comands(self, period, rule, user, env):
+        if 'deploy' in rule:
+            if period in rule['deploy']:
+                run = self.__callstack(
+                    user,
+                    rule['deploy'][period],
+                    env=env)
+                if not run:
+                    return False
+        return True
+
     def __deploy_worker(self, user, repo, rule):
         # Create a new environment variable to pass
         # the request to the commands as an environment
         # variable
         env = {'DEPLOY_REQUEST': json.dumps(repo['request'])}
 
-        if 'deploy' in rule:
-            if 'before' in rule['deploy']:
-                run = self.__callstack(
-                    user,
-                    rule['deploy']['before'],
-                    env=env)
-                if not run:
-                    return False
+        run = self.__deploy_commands(
+            'before',
+            rule,
+            user,
+            env
+        )
+        if not run:
+            return False
 
         if 'pull' in rule:
             if isinstance(bool, rule['pull']):
@@ -851,14 +862,14 @@ class GitDeployHandler(BaseHTTPRequestHandler):
             if not run:
                 return False
 
-        if 'deploy' in rule:
-            if 'after' in rule['deploy']:
-                run = self.__callstack(
-                    user,
-                    rule['deploy']['after'],
-                    env=env)
-                if not run:
-                    return False
+        run = self.__deploy_commands(
+            'after',
+            rule,
+            user,
+            env
+        )
+        if not run:
+            return False
 
         return True
 
