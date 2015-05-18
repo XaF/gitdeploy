@@ -459,6 +459,13 @@ class GitDeployHandler(BaseHTTPRequestHandler):
             # Check if we have a .gitdeploy.yml file for the user
             fname = os.path.join(u.pw_dir, '.gitdeploy.yml')
             if os.path.isfile(fname):
+                self.server.log.debug(
+                    "Found config file for user %s (%s, %s)" % (
+                        u.pw_name,
+                        u.pw_uid,
+                        u.pw_gid,
+                    ))
+
                 rules = []
                 try:
                     with open(fname, 'r') as f:
