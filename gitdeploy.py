@@ -32,8 +32,16 @@ import pwd
 import re
 import shlex
 import signal
-from subprocess import Popen as subprocess_Popen, PIPE, STDOUT
-from ssl import wrap_socket as ssl_wrap_socket, PROTOCOL_SSLv23, SSLError
+from subprocess import (
+    Popen as subprocess_Popen,
+    PIPE,
+    STDOUT,
+)
+from ssl import (
+    wrap_socket as ssl_wrap_socket,
+    PROTOCOL_SSLv23,
+    SSLError,
+)
 import sys
 import urlparse
 import yaml
