@@ -21,6 +21,8 @@
 
 # Python lib
 from BaseHTTPServer import BaseHTTPRequestHandler, HTTPServer
+import hashlib
+import hmac
 import inspect
 import json
 import logging
@@ -52,6 +54,57 @@ def setenv(uid=None, gid=None):
     else:
         os.setegid(gid)
         os.seteuid(uid)
+
+try:
+    compare_digest = hmac.compare_digest
+except:
+    def compare_digest(x, y):
+        if len(x) != len(y):
+            return False
+        result = 0
+        for a, b in zip(bytearray(x), bytearray(y)):
+            result |= a ^ b
+        return result == 0
+
+
+class SecureHash:
+    AVAILABLE_HASH = {
+        'md5':      hashlib.md5,
+        'sha1':     hashlib.sha1,
+        'sha224':   hashlib.sha224,
+        'sha256':   hashlib.sha256,
+        'sha384':   hashlib.sha384,
+        'sha512':   hashlib.sha512,
+    }
+
+    @classmethod
+    def hmac_hash(cls, hashtype, key, content):
+        if hashtype not in SecureHash.AVAILABLE_HASH:
+            return None
+
+        hashtype = SecureHash.AVAILABLE_HASH[hashtype]
+        return hmac.new(
+            key=key,
+            msg=content,
+            digestmod=hashtype).hexdigest()
+
+    def __init__(self, hashtype, secret, content):
+        self.__hashtype = hashtype
+        self.__secret = secret
+        self.__content = content
+
+    def trykey(self, key):
+        rhash = SecureHash.hmac_hash(
+            self.__hashtype,
+            key,
+            self.__content)
+
+        ret = compare_digest(
+            self.__secret,
+            rhash
+        )
+
+        return ret
 
 
 class ContextFilter(logging.Filter):
@@ -220,6 +273,22 @@ class GitDeployHandler(BaseHTTPRequestHandler):
 
         self.server.log.debug("Received request: %s", content)
 
+        # Search for a secret token in the header
+        secret = None
+        for header, value in self.headers.items():
+            if re.match('^X-([^ ]+)-Signature$', header, re.IGNORECASE):
+                secret = re.match(
+                    '^(?:(?P<method>[a-z0-9+]+)=)?(?P<hash>.+)$',
+                    value).groupdict()
+                break
+
+        if secret is not None:
+            self.server.log.debug("Found secret: %s", secret)
+
+            if not secret['method']:
+                secret['method'] = 'sha1'
+            secret = SecureHash(secret['method'], secret['hash'], rq_content)
+
         repos = []
 
         def get_repos(entry):
@@ -319,6 +388,7 @@ class GitDeployHandler(BaseHTTPRequestHandler):
                         'ref': ref,
                         'commit': commit,
                         'event': l_event_type,
+                        'secret': secret,
                         'key': key,
                         'request': entry,
                     }
@@ -432,6 +502,15 @@ class GitDeployHandler(BaseHTTPRequestHandler):
                                 or (repo['key'] is not None and (
                                     'key' not in rule
                                     or str(rule['key']) != repo['key']))):
+                                continue
+
+                            if ((repo['secret'] is None
+                                 and 'secret' in rule
+                                 and rule['secret'] is not None)
+                                or (repo['secret'] is not None and (
+                                    'secret' not in rule
+                                    or not repo['secret'].trykey(
+                                        rule['secret'])))):
                                 continue
 
                             i = repositories.index(repo)
