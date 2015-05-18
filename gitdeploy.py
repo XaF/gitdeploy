@@ -32,7 +32,7 @@ import pwd
 import re
 import shlex
 import signal
-import subprocess
+from subprocess import Popen as subprocess_Popen, PIPE, STDOUT
 from ssl import wrap_socket as ssl_wrap_socket, PROTOCOL_SSLv23, SSLError
 import sys
 import urlparse
@@ -590,11 +590,11 @@ class GitDeployHandler(BaseHTTPRequestHandler):
         for command in commands:
             args = shlex.split(command)
 
-            run = subprocess.Popen(
+            run = subprocess_Popen(
                 args,
                 env=call_env,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT)
+                stdout=PIPE,
+                stderr=STDOUT)
             out = run.communicate()[0].rstrip()
 
             self.server.log.debug("Command: %s; Output:\n%s",
