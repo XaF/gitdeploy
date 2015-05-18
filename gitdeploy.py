@@ -33,6 +33,7 @@ import re
 import shlex
 import signal
 import subprocess
+from ssl import wrap_socket as ssl_wrap_socket, PROTOCOL_SSLv23, SSLError
 import sys
 import urlparse
 import yaml
@@ -903,6 +904,28 @@ class GitDeployServer(HTTPServer):
         self.log.addHandler(self.handler)
 
         self.log.info('GitDeployServer started on port %d' % server_address[1])
+
+        # Check if ssl is required
+        if 'ssl' in self.config['server'] and self.config['server']['ssl']:
+            if ('files' not in self.config
+                    or 'sslkey' not in self.config['files']
+                    or 'sslcrt' not in self.config['files']):
+                self.log.error("Missing parameters for SSL server "
+                               "(have you set up 'sslkey' and 'sslcrt'?)")
+                sys.exit(1)
+
+            self.orig_socket = self.socket
+            try:
+                self.socket = ssl_wrap_socket(
+                    self.orig_socket,
+                    keyfile=self.config['files']['sslkey'],
+                    certfile=self.config['files']['sslcrt'],
+                    server_side=True,
+                    ssl_version=PROTOCOL_SSLv23,
+                    do_handshake_on_connect=True)
+            except SSLError as e:
+                self.log.error("Error when setting up SSL server",
+                               exc_info=sys.exc_info())
 
     def signal_handler_exit(self, signum, frame):
         self.log.info(

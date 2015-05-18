@@ -6,10 +6,19 @@ files:
     # The logfile
     log: /var/log/gitdeploy.log
 
+    # The ssl key file
+    sslkey: server.key
+
+    # The ssl crt file
+    sslcrt: server.crt
+
 # Server configuration
 server:
     # The port on which the gitdeploy webserver will listen
     port: 7920
+
+    # Whether or not to use SSL
+    ssl: false
 
 # Deploy configuration:
 deploy:
