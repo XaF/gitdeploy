@@ -486,7 +486,7 @@ class GitDeployHandler(BaseHTTPRequestHandler):
                                 self.__user_log(
                                     u,
                                     logging.WARNING,
-                                    "Missing mandatory argument"
+                                    "Missing mandatory argument "
                                     "'%s' in rule: %s",
                                     arg,
                                     yaml.dump(rule))
