@@ -31,6 +31,7 @@ import os.path
 import pwd
 import re
 import shlex
+import signal
 import subprocess
 import sys
 import urlparse
@@ -903,10 +904,38 @@ class GitDeployServer(HTTPServer):
 
         self.log.info('GitDeployServer started on port %d' % server_address[1])
 
+    def signal_handler_exit(self, signum, frame):
+        self.log.info(
+            'Shutting down after receiving signal %s',
+            SIGNALS_TO_NAMES_DICT.get(
+                signum,
+                "%d (unnamed)" % signum)
+        )
+
+        from threading import Thread
+        shutdown_thread = Thread(target=self.shutdown)
+        shutdown_thread.daemon = True
+        shutdown_thread.start()
+
+
+# Dictionnary allowing to search a signal name from its number
+SIGNALS_TO_NAMES_DICT = dict(
+    (getattr(signal, n), n)
+    for n in dir(signal)
+    if n.startswith('SIG') and '_' not in n)
+
 
 def run(config):
+    # Prepare the server according to the configuration
     server_address = ('', config['server']['port'])
     httpd = GitDeployServer(server_address, config)
+
+    # Handle signals to exit gracefully
+    signal.signal(signal.SIGINT, httpd.signal_handler_exit)
+    signal.signal(signal.SIGTERM, httpd.signal_handler_exit)
+    signal.signal(signal.SIGALRM, httpd.signal_handler_exit)
+
+    # Start running the server
     httpd.serve_forever()
 
 if __name__ == "__main__":
