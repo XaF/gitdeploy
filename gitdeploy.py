@@ -180,7 +180,10 @@ class GitDeployHandler(BaseHTTPRequestHandler):
         repositories = self.__parse_request()
         self.__send_answer()
 
-        self.server.log.debug("Repositories in the request: %s", repositories)
+        self.server.log.debug(
+            "Repositories in the request: %s",
+            [{k: v for k, v in r.items() if k != 'request'}
+             for r in repositories])
 
         if repositories:
             work = self.__search_hooks(repositories)
