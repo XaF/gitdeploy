@@ -19,8 +19,8 @@
 # Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA
 # or see <http://www.gnu.org/licenses/>.
 
-# Python lib
-from BaseHTTPServer import BaseHTTPRequestHandler, HTTPServer
+
+# Python imports valid for Python 2.x and Python 3.x
 import hashlib
 import hmac
 import inspect
@@ -43,8 +43,17 @@ from ssl import (
     SSLError,
 )
 import sys
-import urlparse
 import yaml
+
+# Python imports version specific
+IS_PY2 = (sys.version_info[0] == 2)
+if IS_PY2:
+    from BaseHTTPServer import BaseHTTPRequestHandler, HTTPServer
+    from urlparse import parse_qs, urlparse
+else:
+    from http.server import BaseHTTPRequestHandler, HTTPServer
+    from urllib.parse import parse_qs, urlparse
+
 
 CURRENT_DIR = os.path.realpath('.')
 GNRL_LOG_FORMAT = ("%(asctime)s::%(name)s::"
@@ -259,11 +268,11 @@ class GitDeployHandler(BaseHTTPRequestHandler):
 
         self.server.log.debug(
             "Received request headers: %s",
-            self.headers.items())
+            list(self.headers.items()))
 
         # Search for a key in the query string
-        key = urlparse.parse_qs(
-            urlparse.urlparse(self.path).query).get('key', None)
+        key = parse_qs(
+            urlparse(self.path).query).get('key', None)
 
         if key is not None:
             key = key[-1]
@@ -273,7 +282,7 @@ class GitDeployHandler(BaseHTTPRequestHandler):
         try:
             rq_length = int(self.headers.getheader('content-length'))
             rq_content = self.rfile.read(rq_length)
-            content = urlparse.parse_qs(rq_content)
+            content = parse_qs(rq_content)
             if 'repository' not in content and 'payload' not in content:
                 content = json.loads(rq_content)
         except Exception as e:
@@ -320,7 +329,7 @@ class GitDeployHandler(BaseHTTPRequestHandler):
                         and 'absolute_url' in entry['repository']
                         and 'scm' in entry['repository']
                         and entry['repository']['scm'] == 'git'):
-                    p = re.compile(ur'^[^:]+://(?P<host>[^ ]+)$')
+                    p = re.compile(r'^[^:]+://(?P<host>[^ ]+)$')
                     m = p.search(entry['canon_url'])
 
                     if m:
@@ -698,9 +707,9 @@ class GitDeployHandler(BaseHTTPRequestHandler):
         if isinstance(run, tuple):
             return False
 
-        p = re.compile(ur'^(?P<remote>[^\s]+)\s+(?P<url>' +
+        p = re.compile(r'^(?P<remote>[^\s]+)\s+(?P<url>' +
                        '|'.join([re.escape(url) for url in urls]) +
-                       ur')\s+\(fetch\)$',
+                       r')\s+\(fetch\)$',
                        re.IGNORECASE | re.MULTILINE)
         m = p.search(run)
         if not m:
@@ -742,7 +751,7 @@ class GitDeployHandler(BaseHTTPRequestHandler):
             # our given commit, and that should have the name we
             # received in the request
             p = re.compile(
-                ur'^\s+(?P<rbranch>(?P<remote>' +
+                r'^\s+(?P<rbranch>(?P<remote>' +
                 re.escape(remote) +
                 ')/(?P<branch>' +
                 re.escape(rname) +
